@@ -8,16 +8,41 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const AdmZip = require('adm-zip');
+const pidusage = require('pidusage');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const BOTS_DIR = path.join(__dirname, 'bots');
 
+// Limit RAM na jednego bota (w MB). Darmowy plan Render ma tylko 512 MB RAM na WSZYSTKO,
+// więc pilnujemy, żeby jeden bot nie zjadł całego serwera.
+const MAX_MEMORY_MB = parseInt(process.env.MAX_BOT_MEMORY_MB || '256', 10);
+
 // Upewnij się, że folder na boty istnieje
 if (!fs.existsSync(BOTS_DIR)) fs.mkdirSync(BOTS_DIR);
 
-// Trzymamy tu uruchomione procesy botów: { nazwaBota: { process, logs: [] } }
+// Trzymamy tu uruchomione procesy botów: { nazwaBota: { process, logs: [], stats: { memMB, cpu } } }
 const runningBots = {};
+
+// --- Monitorowanie zużycia RAM/CPU każdego działającego bota co 3 sekundy ---
+// Jeśli bot przekroczy limit MAX_MEMORY_MB, zostaje automatycznie zatrzymany.
+setInterval(async () => {
+  for (const [name, bot] of Object.entries(runningBots)) {
+    if (!bot.process || !bot.process.pid) continue;
+    try {
+      const stat = await pidusage(bot.process.pid);
+      bot.stats = { memMB: Math.round(stat.memory / 1024 / 1024 * 10) / 10, cpu: Math.round(stat.cpu * 10) / 10 };
+
+      if (bot.stats.memMB > MAX_MEMORY_MB) {
+        bot.logs.push(`[LIMIT] Bot przekroczył limit RAM (${bot.stats.memMB} MB > ${MAX_MEMORY_MB} MB). Zatrzymuję.`);
+        bot.process.kill();
+        delete runningBots[name];
+      }
+    } catch (err) {
+      // proces mógł się już zakończyć między sprawdzeniami - ignorujemy
+    }
+  }
+}, 3000);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -136,14 +161,28 @@ app.post('/api/bots/:name/files', (req, res) => {
   res.json({ ok: true, message: 'Zapisano.' });
 });
 
-// --- Lista botów ---
+// --- Lista botów (z zużyciem RAM/CPU dla działających) ---
 app.get('/api/bots', (req, res) => {
   const bots = fs.readdirSync(BOTS_DIR).filter(f => fs.statSync(path.join(BOTS_DIR, f)).isDirectory());
   const result = bots.map(name => ({
     name,
     running: !!runningBots[name],
+    memMB: runningBots[name]?.stats?.memMB ?? 0,
+    cpu: runningBots[name]?.stats?.cpu ?? 0,
+    limitMB: MAX_MEMORY_MB,
   }));
   res.json(result);
+});
+
+// --- Ogólne zużycie zasobów całego dashboardu (wszystkie boty razem) ---
+app.get('/api/stats', (req, res) => {
+  const totalMemMB = Object.values(runningBots).reduce((sum, b) => sum + (b.stats?.memMB || 0), 0);
+  const runningCount = Object.keys(runningBots).length;
+  res.json({
+    totalMemMB: Math.round(totalMemMB * 10) / 10,
+    runningCount,
+    limitPerBotMB: MAX_MEMORY_MB,
+  });
 });
 
 // --- Start bota ---
@@ -181,7 +220,7 @@ app.post('/api/bots/:name/start', (req, res) => {
       ? spawn('python3', ['main.py'], { cwd: botDir, env: { ...process.env, ...meta.env } })
       : spawn('node', ['index.js'], { cwd: botDir, env: { ...process.env, ...meta.env } });
 
-    runningBots[name] = { process: runCmd, logs };
+    runningBots[name] = { process: runCmd, logs, stats: { memMB: 0, cpu: 0 } };
 
     runCmd.stdout.on('data', d => pushLog(d.toString()));
     runCmd.stderr.on('data', d => pushLog(d.toString()));

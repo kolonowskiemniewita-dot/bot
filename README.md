@@ -17,7 +17,8 @@ i własny plik zależności (`requirements.txt` dla Pythona albo `package.json` 
 3. **Instance Type: Free**
 4. W sekcji **Environment Variables** dodaj:
    - `DASHBOARD_PASSWORD` = jakieś Twoje hasło do panelu
-5. Kliknij **Deploy**
+5. (Opcjonalnie) dodaj `MAX_BOT_MEMORY_MB` = np. `256` — to maksymalna ilość RAM na JEDNEGO bota; jeśli bot przekroczy limit, dashboard sam go zatrzyma. Domyślnie ustawione na 256 MB.
+6. Kliknij **Deploy**
 
 Po chwili Render poda Ci adres, np. `https://bot-xxxx.onrender.com` — to Twój dashboard.
 
