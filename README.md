@@ -7,8 +7,8 @@ i własny plik zależności (`requirements.txt` dla Pythona albo `package.json` 
 
 1. Wejdź na swoje puste repozytorium na GitHub.com
 2. Kliknij **"Add file" → "Upload files"**
-3. Przeciągnij tam WSZYSTKIE pliki z tego folderu (server.js, package.json, Dockerfile, .gitignore, README.md oraz cały folder `public`)
-4. Na dole kliknij **"Commit changes"**
+3. Przeciągnij te pliki: `server.js`, `package.json`, `Dockerfile`, `.gitignore`, `README.md` (bez folderów — wszystko jest teraz w jednym miejscu)
+4. Na dole kliknij **"Commit changes"** — GitHub zapyta, czy nadpisać istniejące pliki, potwierdź
 
 ## Jak podłączyć do Render
 
